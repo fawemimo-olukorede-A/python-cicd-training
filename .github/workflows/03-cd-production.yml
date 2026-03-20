@@ -65,9 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: pre-deploy-tests
 
-    environment:
-      name: production
-      url: http://${{ secrets.PROD_VM_HOST }}:5000
+    environment: production
 
     steps:
       - name: Checkout code
