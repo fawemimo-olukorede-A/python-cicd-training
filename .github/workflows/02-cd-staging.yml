@@ -1,0 +1,130 @@
+# =============================================================================
+# LESSON 2: Continuous Deployment to STAGING (Test Environment)
+# =============================================================================
+# This workflow deploys to the STAGING Azure VM after CI passes.
+# Uses USERNAME + PASSWORD authentication (simpler for training)
+#
+# REQUIREMENTS (GitHub Secrets):
+#   - STAGING_VM_HOST: IP address of staging VM
+#   - STAGING_VM_USER: Username (e.g., azureuser)
+#   - STAGING_VM_PASSWORD: Password for the user
+# =============================================================================
+
+name: Deploy to Staging
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    branches: [main]
+    types:
+      - completed
+
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging VM
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    environment:
+      name: staging
+      url: http://${{ secrets.STAGING_VM_HOST }}:5000
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy_package
+          cp -r app.py templates static requirements.txt deploy_package/
+          tar -czf deploy.tar.gz deploy_package
+
+      - name: Copy files to Staging VM
+        env:
+          SSHPASS: ${{ secrets.STAGING_VM_PASSWORD }}
+        run: |
+          sshpass -e scp -o StrictHostKeyChecking=no \
+            deploy.tar.gz \
+            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }}:/tmp/
+
+      - name: Deploy application on Staging VM
+        env:
+          SSHPASS: ${{ secrets.STAGING_VM_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << 'DEPLOY_SCRIPT'
+
+            set -e
+
+            echo "🚀 Starting deployment to STAGING..."
+
+            APP_DIR="/opt/flask-app"
+            BACKUP_DIR="/opt/flask-app-backup"
+
+            # Create backup
+            if [ -d "$APP_DIR" ]; then
+              echo "📦 Creating backup..."
+              sudo rm -rf $BACKUP_DIR
+              sudo cp -r $APP_DIR $BACKUP_DIR
+            fi
+
+            # Extract new deployment
+            echo "📂 Extracting new version..."
+            cd /tmp
+            tar -xzf deploy.tar.gz
+            sudo mkdir -p $APP_DIR
+            sudo cp -r deploy_package/* $APP_DIR/
+
+            # Setup Python environment
+            echo "🐍 Setting up Python environment..."
+            cd $APP_DIR
+            sudo python3 -m venv venv || true
+            sudo $APP_DIR/venv/bin/pip install --upgrade pip
+            sudo $APP_DIR/venv/bin/pip install -r requirements.txt
+
+            # Restart application
+            echo "🔄 Restarting application..."
+            sudo systemctl restart flask-app || sudo $APP_DIR/venv/bin/gunicorn -w 2 -b 0.0.0.0:5000 app:app --daemon
+
+            sleep 5
+
+            # Health check
+            echo "🏥 Running health check..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✅ Deployment successful!"
+            else
+              echo "❌ Health check failed! Rolling back..."
+              sudo rm -rf $APP_DIR
+              sudo mv $BACKUP_DIR $APP_DIR
+              sudo systemctl restart flask-app || true
+              exit 1
+            fi
+
+            rm -rf /tmp/deploy_package /tmp/deploy.tar.gz
+            echo "🎉 Staging deployment complete!"
+
+          DEPLOY_SCRIPT
+
+      - name: Run Smoke Tests
+        run: |
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.STAGING_VM_HOST }}:5000/health)
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed"
+            exit 1
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **VM:** ${{ secrets.STAGING_VM_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** http://${{ secrets.STAGING_VM_HOST }}:5000" >> $GITHUB_STEP_SUMMARY

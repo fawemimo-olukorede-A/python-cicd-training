@@ -1,0 +1,105 @@
+# =============================================================================
+# ROLLBACK WORKFLOW - Manual Trigger
+# =============================================================================
+# Use when: QA/Testers find bugs after deployment
+# How to use: Actions → "Rollback Deployment" → Select environment → Run
+# Uses USERNAME + PASSWORD authentication
+# =============================================================================
+
+name: 🔙 Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Which environment to rollback?'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  rollback:
+    name: Rollback ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
+            echo "VM_HOST=${{ secrets.STAGING_VM_HOST }}" >> $GITHUB_ENV
+            echo "VM_USER=${{ secrets.STAGING_VM_USER }}" >> $GITHUB_ENV
+            echo "VM_PASSWORD=${{ secrets.STAGING_VM_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "VM_HOST=${{ secrets.PROD_VM_HOST }}" >> $GITHUB_ENV
+            echo "VM_USER=${{ secrets.PROD_VM_USER }}" >> $GITHUB_ENV
+            echo "VM_PASSWORD=${{ secrets.PROD_VM_PASSWORD }}" >> $GITHUB_ENV
+          fi
+
+      - name: Execute Rollback
+        env:
+          SSHPASS: ${{ env.VM_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no $VM_USER@$VM_HOST << 'EOF'
+
+          set -e
+          echo "🔙 ROLLBACK STARTED"
+          echo "================================"
+
+          APP_DIR="/opt/flask-app"
+
+          # Find latest backup
+          BACKUP=$(ls -td /opt/flask-app-backup* 2>/dev/null | head -1)
+
+          if [ -z "$BACKUP" ]; then
+            echo "❌ No backup found! Cannot rollback."
+            exit 1
+          fi
+
+          echo "📦 Found backup: $BACKUP"
+
+          # Save current broken version for debugging
+          if [ -d "$APP_DIR" ]; then
+            sudo mv $APP_DIR /opt/flask-app-broken-$(date +%Y%m%d_%H%M%S)
+          fi
+
+          # Restore backup
+          echo "🔄 Restoring previous version..."
+          sudo cp -r $BACKUP $APP_DIR
+
+          # Restart service
+          echo "🔄 Restarting application..."
+          sudo systemctl restart flask-app
+
+          sleep 5
+
+          # Verify
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
+
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "================================"
+            echo "✅ ROLLBACK SUCCESSFUL!"
+            echo "App restored from: $BACKUP"
+          else
+            echo "❌ Rollback may have issues. Status: $HTTP_STATUS"
+            exit 1
+          fi
+
+          EOF
+
+      - name: Verify from outside
+        run: |
+          sleep 3
+          curl -s http://$VM_HOST:5000/health && echo ""
+          echo "✅ ${{ github.event.inputs.environment }} rollback complete!"
+
+      - name: Summary
+        run: |
+          echo "## 🔙 Rollback Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date)" >> $GITHUB_STEP_SUMMARY
