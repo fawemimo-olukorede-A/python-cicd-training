@@ -36,7 +36,7 @@ jobs:
         env:
           SSHPASS: ${{ env.VM_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no $VM_USER@$VM_HOST << 'EOF'
+          sshpass -e ssh -P 9001 -o StrictHostKeyChecking=no $VM_USER@$VM_HOST << 'EOF'
 
           set -e
           echo "🔙 ROLLBACK STARTED"
