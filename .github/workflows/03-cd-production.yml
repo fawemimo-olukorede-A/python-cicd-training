@@ -81,11 +81,12 @@ jobs:
           SSHPASS: ${{ secrets.PROD_VM_PASSWORD }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.PROD_VM_USER }}@${{ secrets.PROD_VM_HOST }} << 'DEPLOY_SCRIPT'
+            ${{ secrets.PROD_VM_USER }}@${{ secrets.PROD_VM_HOST }} "APP_PORT=${APP_PORT}" 'bash -s' << 'DEPLOY_SCRIPT'
 
             set -e
 
             echo "🚀 Starting PRODUCTION deployment..."
+            echo "📌 Using port: $APP_PORT"
 
             APP_DIR="/opt/flask-app"
             BACKUP_DIR="/opt/flask-app-backup-$(date +%Y%m%d_%H%M%S)"
