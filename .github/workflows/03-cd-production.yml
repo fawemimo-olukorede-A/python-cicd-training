@@ -67,7 +67,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.PROD_VM_PASSWORD }}
         run: |
-          sshpass -e scp -P 9000 -o StrictHostKeyChecking=no \
+          sshpass -e scp -o StrictHostKeyChecking=no \
             deploy.tar.gz \
             ${{ secrets.PROD_VM_USER }}@${{ secrets.PROD_VM_HOST }}:/tmp/
 
@@ -75,7 +75,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.PROD_VM_PASSWORD }}
         run: |
-          sshpass -e ssh - 9000 -o StrictHostKeyChecking=no \
+          sshpass -e ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_VM_USER }}@${{ secrets.PROD_VM_HOST }} << 'DEPLOY_SCRIPT'
 
             set -e
