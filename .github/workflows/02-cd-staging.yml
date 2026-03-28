@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_PORT: 9000
+  APP_PORT: 9001
 
 jobs:
   deploy-staging:
