@@ -23,6 +23,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Install sshpass
         run: sudo apt-get install -y sshpass
+      - name: Read production
+        id: config
+        run: |
+           APP_PORT= $grep ("APP_PORT" .env | cut -d '=' -f2)
+           echo "APP_PORT=$APP_PORT" >> $GITHUB_ENV
       - name: Create deployment package
         run: |
           mkdir -p deploy_package
@@ -38,6 +43,7 @@ jobs:
       - name: Deploy application on Staging VM
         env:
           SSHPASS: ${{ secrets.STAGING_VM_PASSWORD }}
+          APP_PORT: ${{ steps.config.outputs.APP_PORT }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no \
             ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << 'DEPLOY_SCRIPT'
