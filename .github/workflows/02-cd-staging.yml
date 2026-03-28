@@ -47,7 +47,7 @@ jobs:
 
             set -e
 
-            APP_PORT=9000
+            APP_PORT=9001
             echo "🚀 Starting deployment to STAGING..."
             echo "📌 Using port: \$APP_PORT"
 
