@@ -43,54 +43,55 @@ jobs:
       - name: Deploy application on Staging VM
         env:
           SSHPASS: ${{ secrets.STAGING_VM_PASSWORD }}
-          APP_PORT: ${{ steps.config.outputs.APP_PORT }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << 'DEPLOY_SCRIPT'
+            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << DEPLOY_SCRIPT
 
             set -e
 
+            APP_PORT=${{ env.APP_PORT }}
             echo "🚀 Starting deployment to STAGING..."
+            echo "📌 Using port: \$APP_PORT"
 
             APP_DIR="/opt/flask-app"
             BACKUP_DIR="/opt/flask-app-backup"
 
             # Create backup
-            if [ -d "$APP_DIR" ]; then
+            if [ -d "\$APP_DIR" ]; then
               echo "📦 Creating backup..."
-              sudo rm -rf $BACKUP_DIR
-              sudo cp -r $APP_DIR $BACKUP_DIR
+              sudo rm -rf \$BACKUP_DIR
+              sudo cp -r \$APP_DIR \$BACKUP_DIR
             fi
 
             # Extract new deployment
             echo "📂 Extracting new version..."
             cd /tmp
             tar -xzf deploy.tar.gz
-            sudo mkdir -p $APP_DIR
-            sudo cp -r deploy_package/* $APP_DIR/
+            sudo mkdir -p \$APP_DIR
+            sudo cp -r deploy_package/* \$APP_DIR/
 
             # Setup Python environment
             echo "🐍 Setting up Python environment..."
-            cd $APP_DIR
+            cd \$APP_DIR
             sudo python3 -m venv venv || true
-            sudo $APP_DIR/venv/bin/pip install --upgrade pip
-            sudo $APP_DIR/venv/bin/pip install -r requirements.txt
+            sudo \$APP_DIR/venv/bin/pip install --upgrade pip
+            sudo \$APP_DIR/venv/bin/pip install -r requirements.txt
 
             # Restart application
             echo "🔄 Restarting application..."
-            sudo systemctl restart flask-app || sudo $APP_DIR/venv/bin/gunicorn -w 2 -b 0.0.0.0:$APP_PORT app:app --daemon
+            sudo systemctl restart flask-app || sudo \$APP_DIR/venv/bin/gunicorn -w 2 -b 0.0.0.0:\$APP_PORT app:app --daemon
 
             sleep 5
 
             # Health check
             echo "🏥 Running health check..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$APP_PORT/health)
-            if [ "$HTTP_STATUS" -eq 200 ]; then
+            HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:\$APP_PORT/health)
+            if [ "\$HTTP_STATUS" -eq 200 ]; then
               echo "✅ Deployment successful!"
             else
               echo "❌ Health check failed! Rolling back..."
-              sudo rm -rf $APP_DIR
-              sudo mv $BACKUP_DIR $APP_DIR
+              sudo rm -rf \$APP_DIR
+              sudo mv \$BACKUP_DIR \$APP_DIR
               sudo systemctl restart flask-app || true
               exit 1
             fi
