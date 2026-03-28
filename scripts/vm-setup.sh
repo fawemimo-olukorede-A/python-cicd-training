@@ -43,7 +43,7 @@ Group=azureuser
 WorkingDirectory=/opt/flask-app
 Environment="PATH=/opt/flask-app/venv/bin"
 Environment="FLASK_ENV=staging"
-ExecStart=/opt/flask-app/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 app:app
+ExecStart=/opt/flask-app/venv/bin/gunicorn -w 4 -b 0.0.0.0:${APP_PORT:-5000} app:app
 Restart=always
 RestartSec=5
 
@@ -57,7 +57,7 @@ sudo systemctl enable flask-app
 
 # Configure firewall (allow port 5000)
 echo "🔥 Configuring firewall..."
-sudo ufw allow 5000/tcp || true
+sudo ufw allow ${APP_PORT:-5000}/tcp || true
 sudo ufw allow 22/tcp || true
 sudo ufw allow 80/tcp || true
 
@@ -74,4 +74,4 @@ echo "2. Note down the VM's IP address for GitHub Secrets"
 echo "3. Test SSH access: ssh azureuser@<VM-IP>"
 echo ""
 echo "After deployment, your app will be available at:"
-echo "  http://<VM-IP>:5000"
+echo "  http://<VM-IP>:${APP_PORT:-5000}"
