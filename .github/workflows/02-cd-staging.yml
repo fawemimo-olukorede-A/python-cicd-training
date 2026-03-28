@@ -104,7 +104,7 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.STAGING_VM_HOST }}:$APP_PORT/health)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.STAGING_VM_HOST }}:9001/health)
           if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "✅ Health check passed"
           else
@@ -117,4 +117,4 @@ jobs:
           echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
           echo "- **VM:** ${{ secrets.STAGING_VM_HOST }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** http://${{ secrets.STAGING_VM_HOST }}:$APP_PORT" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** http://${{ secrets.STAGING_VM_HOST }}:9001" >> $GITHUB_STEP_SUMMARY
