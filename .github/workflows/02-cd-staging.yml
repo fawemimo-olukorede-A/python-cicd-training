@@ -9,6 +9,9 @@ on:
 
   workflow_dispatch:
 
+env:
+  APP_PORT: 9001
+
 jobs:
   deploy-staging:
     name: Deploy to Staging VM
@@ -23,11 +26,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Install sshpass
         run: sudo apt-get install -y sshpass
-      # - name: Read production
-      #   id: config
-      #   run: |
-      #      APP_PORT= $grep ("APP_PORT" .env | cut -d '=' -f2)
-      #      echo "APP_PORT=$APP_PORT" >> $GITHUB_ENV
       - name: Create deployment package
         run: |
           mkdir -p deploy_package
@@ -43,54 +41,58 @@ jobs:
       - name: Deploy application on Staging VM
         env:
           SSHPASS: ${{ secrets.STAGING_VM_PASSWORD }}
-          APP_PORT: ${{ steps.config.outputs.APP_PORT }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << 'DEPLOY_SCRIPT'
+            ${{ secrets.STAGING_VM_USER }}@${{ secrets.STAGING_VM_HOST }} << DEPLOY_SCRIPT
 
             set -e
 
+            APP_PORT=9001
             echo "🚀 Starting deployment to STAGING..."
+            echo "📌 Using port: \$APP_PORT"
 
             APP_DIR="/opt/flask-app"
             BACKUP_DIR="/opt/flask-app-backup"
 
             # Create backup
-            if [ -d "$APP_DIR" ]; then
+            if [ -d "\$APP_DIR" ]; then
               echo "📦 Creating backup..."
-              sudo rm -rf $BACKUP_DIR
-              sudo cp -r $APP_DIR $BACKUP_DIR
+              sudo rm -rf \$BACKUP_DIR
+              sudo cp -r \$APP_DIR \$BACKUP_DIR
             fi
 
             # Extract new deployment
             echo "📂 Extracting new version..."
             cd /tmp
             tar -xzf deploy.tar.gz
-            sudo mkdir -p $APP_DIR
-            sudo cp -r deploy_package/* $APP_DIR/
+            sudo mkdir -p \$APP_DIR
+            sudo cp -r deploy_package/* \$APP_DIR/
 
             # Setup Python environment
             echo "🐍 Setting up Python environment..."
-            cd $APP_DIR
+            cd \$APP_DIR
             sudo python3 -m venv venv || true
-            sudo $APP_DIR/venv/bin/pip install --upgrade pip
-            sudo $APP_DIR/venv/bin/pip install -r requirements.txt
+            sudo \$APP_DIR/venv/bin/pip install --upgrade pip
+            sudo \$APP_DIR/venv/bin/pip install -r requirements.txt
 
             # Restart application
             echo "🔄 Restarting application..."
-            sudo systemctl restart flask-app || sudo $APP_DIR/venv/bin/gunicorn -w 2 -b 0.0.0.0:$APP_PORT app:app --daemon
+            sudo systemctl stop flask-app || true
+            sudo pkill -f gunicorn || true
+            sleep 2
+            cd \$APP_DIR && sudo \$APP_DIR/venv/bin/gunicorn -w 2 -b 0.0.0.0:\$APP_PORT app:app --daemon
 
             sleep 5
 
             # Health check
             echo "🏥 Running health check..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$APP_PORT/health)
-            if [ "$HTTP_STATUS" -eq 200 ]; then
+            HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:\$APP_PORT/health)
+            if [ "\$HTTP_STATUS" -eq 200 ]; then
               echo "✅ Deployment successful!"
             else
               echo "❌ Health check failed! Rolling back..."
-              sudo rm -rf $APP_DIR
-              sudo mv $BACKUP_DIR $APP_DIR
+              sudo rm -rf \$APP_DIR
+              sudo mv \$BACKUP_DIR \$APP_DIR
               sudo systemctl restart flask-app || true
               exit 1
             fi
@@ -102,7 +104,7 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.STAGING_VM_HOST }}:$APP_PORT/health)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.STAGING_VM_HOST }}:9001/health)
           if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "✅ Health check passed"
           else
@@ -115,4 +117,4 @@ jobs:
           echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
           echo "- **VM:** ${{ secrets.STAGING_VM_HOST }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** http://${{ secrets.STAGING_VM_HOST }}:$APP_PORT" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** http://${{ secrets.STAGING_VM_HOST }}:9001" >> $GITHUB_STEP_SUMMARY
